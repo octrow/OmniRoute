@@ -67,6 +67,7 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/v1/search/route.ts": 2,
     "src/app/api/v1/segment/route.ts": 1,
     "src/app/api/v1/session-leases/route.ts": 1,
+    "src/app/api/v1/systemone/route.ts": 1,
     "src/app/api/v1/videos/generations/route.ts": 2,
     // #13788: Codex native web search (/v1/alpha/search) — same quota-preflight credential
     // lookup as web/fetch (class B).
@@ -112,6 +113,10 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/lib/services/quotaAutoPing.ts": 1,
   },
   connection: {
+    // Read-only decision catalog: lists configured inventory and checks cooldown/lockout
+    // state without selecting, leasing or touching a connection. Dispatch stays on the
+    // gated selector in /v1/systemone.
+    "open-sse/handlers/systemOneModels.ts": 1,
     "open-sse/handlers/autoComboCandidates.ts": 1,
     // Two of the three connection re-resolution sites moved into the streaming
     // leg with the decomposition (same sites, new home).
@@ -305,6 +310,7 @@ const CLASSIFICATION: Record<InventoryKind, Record<string, BypassClass>> = {
     Object.keys(EXPECTED.connection).map((file) => [
       file,
       [
+        "open-sse/handlers/systemOneModels.ts",
         "open-sse/handlers/autoComboCandidates.ts",
         "open-sse/handlers/chatCore.ts",
         "open-sse/handlers/chatCore/streamingResponse.ts",

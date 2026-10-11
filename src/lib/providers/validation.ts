@@ -80,7 +80,6 @@ import {
   validateNousResearchProvider,
   validatePoeProvider,
 } from "./validation/audioMiscProviders";
-import { validateTypesafeProvider } from "./validation/typesafe";
 import { validateZaiWebProvider } from "./validation/zaiWeb";
 import { validateSearchProvider, SEARCH_VALIDATOR_CONFIGS } from "./validation/searchProviders";
 import {
@@ -111,6 +110,7 @@ import { validateAiHordeProvider } from "./validation/aihorde";
 import { validateDifyProvider } from "./validation/dify";
 import { validateZyloApiProvider } from "./validation/zylo";
 import { validateAdobeFireflyProvider } from "./validation/adobeFirefly";
+import { validateTypeSafeProvider } from "./validation/typesafe";
 import {
   validateV0VercelProvider,
   validateAuggieProvider,
@@ -226,6 +226,7 @@ export async function validateProviderApiKey({
 
   // ── Specialty provider validation ──
   const SPECIALTY_VALIDATORS = {
+    typesafe: validateTypeSafeProvider,
     "v0-vercel": ({ apiKey, providerSpecificData }: any) =>
       validateV0VercelProvider({ apiKey, providerSpecificData, isLocal }),
     jules: validateJulesProvider,
@@ -327,7 +328,6 @@ export async function validateProviderApiKey({
     nlpcloud: validateNlpCloudProvider,
     oneminai: validateOneMinAiProvider,
     runwayml: validateRunwayProvider,
-    typesafe: ({ apiKey }: any) => validateTypesafeProvider({ apiKey }),
     snowflake: validateSnowflakeProvider,
     gigachat: validateGigachatProvider,
     "deepseek-web": validateDeepSeekWebProvider,

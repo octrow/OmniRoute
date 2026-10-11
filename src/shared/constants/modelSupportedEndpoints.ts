@@ -1,5 +1,6 @@
 export const MODEL_SUPPORTED_ENDPOINT_VALUES = [
   "chat",
+  "systemone",
   "responses",
   "embeddings",
   "rerank",
@@ -35,9 +36,15 @@ export function normalizeModelSupportedEndpoints(endpoints: readonly string[]): 
 }
 
 export function classifyModelSupportedEndpoints(endpoints: readonly string[]): {
-  type?: "embedding" | "rerank" | "image" | "video" | "audio";
+  type?: "embedding" | "rerank" | "image" | "video" | "audio" | "decision";
   subtype?: "speech" | "transcription";
 } {
+  if (
+    endpoints.includes("systemone") &&
+    !endpoints.includes("chat") &&
+    !endpoints.includes("responses")
+  )
+    return { type: "decision" };
   // "chat" and "responses" are text-conversation endpoints; they carry no
   // modality type, so they fall through to the empty return below.
   if (endpoints.includes("embeddings")) return { type: "embedding" };
@@ -70,6 +77,8 @@ export function defaultEndpointsForProviderNodeApiType(
   apiType: string | null | undefined
 ): ModelSupportedEndpoint[] {
   switch ((apiType || "").trim().toLowerCase()) {
+    case "systemone":
+      return ["systemone"];
     case "embeddings":
       return ["embeddings"];
     case "rerank":

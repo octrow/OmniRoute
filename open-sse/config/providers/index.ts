@@ -288,7 +288,10 @@ import { tokenmarketProvider } from "./registry/tokenmarket/index.ts";
 import { twinmindProvider } from "./registry/twinmind/index.ts";
 import { syntxProvider } from "./registry/syntx/index.ts";
 
+import { typesafeProvider } from "./registry/typesafe/index.ts";
+
 export const REGISTRY: Record<string, RegistryEntry> = {
+  typesafe: typesafeProvider,
   aimlapi: aimlapiProvider,
   "mlx-gemma": mlxGemmaProvider,
   "mlx-qwen": mlxQwenProvider,
