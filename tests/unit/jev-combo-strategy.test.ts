@@ -28,6 +28,7 @@ import {
 import { ROUTING_STRATEGY_VALUES } from "../../src/shared/constants/routingStrategies.ts";
 import { HANDLED_COMBO_STRATEGIES } from "../../open-sse/services/combo/strategyDispatch.ts";
 import {
+  appendHeldAsFallback,
   extractPromptForJevState,
   orderJevComboTargets,
 } from "../../open-sse/services/combo/jevOrdering.ts";
@@ -423,4 +424,32 @@ test("buildJevComboTestSummary sentences cover admitted held blocked without cal
   assert.match(summary.heldSentence, /^Held:/);
   assert.match(summary.blockedSentence, /^Blocked:/);
   assert.equal(summary.configurationNote, "Jev is not configured");
+});
+
+test("appendHeldAsFallback keeps held targets as a tail ordered by Jev probability", async () => {
+  const targets = [
+    modelTarget("opus", "cc/opus"),
+    modelTarget("sonnet", "cc/sonnet"),
+    modelTarget("step", "kc/step"),
+    modelTarget("flash", "agy/flash"),
+  ];
+  const outcome = await orderJevComboTargets(targets, "what is 2+2?", {
+    sessionPinned: false,
+    ask: async () => ({
+      ok: true,
+      answer: {
+        choice: "flash",
+        confidence: 0.9,
+        probabilities: { opus: 0.01, sonnet: 0.02, step: 0.07, flash: 0.9 },
+      },
+    }),
+  });
+  assert.deepEqual(
+    outcome.targets.map((t) => t.executionKey),
+    ["flash"]
+  );
+  assert.deepEqual(
+    appendHeldAsFallback(outcome, targets).map((t) => t.executionKey),
+    ["flash", "step", "sonnet", "opus"]
+  );
 });

@@ -32,6 +32,7 @@ export type JevHoldRecord = {
   modelStr: string;
   userRank: number;
   reason: JevHoldReason;
+  probability?: number | null;
   detail?: string;
 };
 
@@ -210,6 +211,7 @@ function toOutcome(
       modelStr: target.modelStr,
       userRank: row.userRank,
       reason: row.reason,
+      probability: row.probability,
       detail: formatHoldDetail(row.userRank, row.probability, row.reason),
     });
   }
@@ -241,4 +243,21 @@ function toOutcome(
     fallbackReason: judged.fallbackReason,
     missingApiKey,
   };
+}
+
+/**
+ * Opt-in (`config.jevHeldFallback`): keep held targets as a failover tail behind the
+ * admitted ones, most-probable first, so a Jev pick that fails (quota, outage) still
+ * falls through instead of exhausting the combo.
+ */
+export function appendHeldAsFallback(
+  outcome: Pick<JevOrderOutcome, "targets" | "holds">,
+  eligible: readonly ResolvedComboTarget[]
+): ResolvedComboTarget[] {
+  const byKey = new Map(eligible.map((target) => [target.executionKey, target]));
+  const tail = [...outcome.holds]
+    .sort((a, b) => (b.probability ?? -1) - (a.probability ?? -1) || a.userRank - b.userRank)
+    .map((hold) => byKey.get(hold.executionKey))
+    .filter((target): target is ResolvedComboTarget => !!target);
+  return [...outcome.targets, ...tail];
 }

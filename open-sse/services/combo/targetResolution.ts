@@ -87,7 +87,12 @@ import {
 } from "./sessionStickiness.ts";
 import { applyRequestTagRouting } from "./autoStrategy.ts";
 import { getStrategyTraits, type StrategyTraits } from "./strategyRegistry.ts";
-import { extractPromptForJevState, orderJevComboTargets, type JevAsk } from "./jevOrdering.ts";
+import {
+  appendHeldAsFallback,
+  extractPromptForJevState,
+  orderJevComboTargets,
+  type JevAsk,
+} from "./jevOrdering.ts";
 import { partitionJevTargetsForAsk } from "./jevBlockChecker.ts";
 import { recordComboDecision } from "./decisionTrace.ts";
 import {
@@ -635,6 +640,12 @@ async function orderByJevStrategy(
         .map((target) => target.modelStr)
         .join(" → ")}`
     );
+  }
+  const comboConfig = (combo.config ?? {}) as { jevHeldFallback?: unknown };
+  if (comboConfig.jevHeldFallback === true && outcome.holds.length > 0) {
+    // Held steps still get a "skipped_before_dispatch" trace row above; with this flag
+    // they are only demoted, so a failed Jev pick falls through instead of exhausting the combo.
+    return { ...outcome, targets: appendHeldAsFallback(outcome, eligible) };
   }
   return outcome;
 }
