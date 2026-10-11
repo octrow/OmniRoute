@@ -598,9 +598,14 @@ async function orderByJevStrategy(
     }
   };
 
+  // `jevHeldFallback`: Jev only reorders - held steps become a tail (below) and a
+  // low-confidence answer ranks by probability instead of falling open to user order.
+  const reorderOnly =
+    (combo.config as { jevHeldFallback?: unknown } | null)?.jevHeldFallback === true;
   const outcome = await orderJevComboTargets(eligible, extractPromptForJevState(body), {
     sessionPinned,
     ask,
+    rankLowConfidence: reorderOnly,
   });
 
   if (deps.traceInvocationId) {
@@ -641,8 +646,7 @@ async function orderByJevStrategy(
         .join(" → ")}`
     );
   }
-  const comboConfig = (combo.config ?? {}) as { jevHeldFallback?: unknown };
-  if (comboConfig.jevHeldFallback === true && outcome.holds.length > 0) {
+  if (reorderOnly && outcome.holds.length > 0) {
     // Held steps still get a "skipped_before_dispatch" trace row above; with this flag
     // they are only demoted, so a failed Jev pick falls through instead of exhausting the combo.
     return { ...outcome, targets: appendHeldAsFallback(outcome, eligible) };

@@ -453,3 +453,38 @@ test("appendHeldAsFallback keeps held targets as a tail ordered by Jev probabili
     ["flash", "step", "sonnet", "opus"]
   );
 });
+
+test("orderJevComboTargets ranks by probability on low confidence when rankLowConfidence is set", async () => {
+  const targets = [
+    modelTarget("opus", "cc/opus"),
+    modelTarget("sonnet", "cc/sonnet"),
+    modelTarget("step", "kc/step"),
+    modelTarget("flash", "agy/flash"),
+  ];
+  const ask = async () => ({
+    ok: true as const,
+    answer: {
+      choice: "step",
+      confidence: 0.4,
+      probabilities: { opus: 0.1, sonnet: 0.2, step: 0.4, flash: 0.3 },
+    },
+  });
+  const plain = await orderJevComboTargets(targets, "explain mutex vs semaphore", {
+    sessionPinned: false,
+    ask,
+  });
+  assert.equal(plain.fallbackReason, "low_confidence");
+  assert.deepEqual(
+    plain.targets.map((t) => t.executionKey),
+    ["opus", "sonnet", "step", "flash"]
+  );
+  const ranked = await orderJevComboTargets(targets, "explain mutex vs semaphore", {
+    sessionPinned: false,
+    ask,
+    rankLowConfidence: true,
+  });
+  assert.deepEqual(
+    ranked.targets.map((t) => t.executionKey),
+    ["step", "flash", "sonnet", "opus"]
+  );
+});

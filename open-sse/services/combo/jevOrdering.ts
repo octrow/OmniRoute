@@ -117,7 +117,12 @@ export function extractPromptForJevState(body: Record<string, unknown> | null | 
 export async function orderJevComboTargets(
   targets: readonly ResolvedComboTarget[],
   state: string,
-  ports: { sessionPinned: boolean; ask: JevAsk }
+  ports: {
+    sessionPinned: boolean;
+    ask: JevAsk;
+    /** Low-confidence answers rank by probability instead of falling open to user order. */
+    rankLowConfidence?: boolean;
+  }
 ): Promise<JevOrderOutcome> {
   if (ports.sessionPinned || targets.length <= 1) {
     return {
@@ -159,12 +164,25 @@ export async function orderJevComboTargets(
     }
   }
 
+  const judged = judgeJev(candidates, answer);
   return toOutcome(
     targets,
-    judgeJev(candidates, answer),
+    ports.rankLowConfidence ? rankLowConfidenceByProbability(judged, answer) : judged,
     missingApiKey,
     answer?.confidence ?? null
   );
+}
+
+function rankLowConfidenceByProbability(
+  judged: JudgeJevResult,
+  answer: JevChoiceAnswer | null
+): JudgeJevResult {
+  if (!answer || judged.fallbackReason !== "low_confidence") return judged;
+  const p = (id: string) => answer.probabilities?.[id] ?? -1;
+  const admitted = judged.admitted
+    .map((row) => ({ ...row, probability: answer.probabilities?.[row.id] ?? null }))
+    .sort((a, b) => p(b.id) - p(a.id) || a.userRank - b.userRank);
+  return { ...judged, admitted };
 }
 
 function formatAdmittedDetail(
