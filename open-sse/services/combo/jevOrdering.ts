@@ -147,9 +147,10 @@ export async function orderJevComboTargets(
         state: boundedState,
         criteria: buildJevCriteria(candidates),
       });
-      if (asked.ok) {
+      // `"x" in` narrows under the non-strict MITM build too; `asked.ok` alone does not.
+      if ("answer" in asked) {
         answer = asked.answer;
-      } else if (asked.reason === "missing_api_key") {
+      } else if ("reason" in asked && asked.reason === "missing_api_key") {
         missingApiKey = true;
       }
     } catch {

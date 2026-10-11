@@ -90,7 +90,11 @@ import { getStrategyTraits, type StrategyTraits } from "./strategyRegistry.ts";
 import { extractPromptForJevState, orderJevComboTargets, type JevAsk } from "./jevOrdering.ts";
 import { partitionJevTargetsForAsk } from "./jevBlockChecker.ts";
 import { recordComboDecision } from "./decisionTrace.ts";
-import { evaluateSystemOneChoice, TYPESAFE_PROVIDER_ID } from "../typesafe/systemOne.ts";
+import {
+  evaluateSystemOneChoice,
+  TYPESAFE_PROVIDER_ID,
+  type SystemOneChoiceUnavailable,
+} from "../typesafe/systemOne.ts";
 import { getProviderCredentials } from "../../../src/sse/services/auth";
 import type {
   ComboCollectionLike,
@@ -576,8 +580,10 @@ async function orderByJevStrategy(
           },
         };
       }
-      log.info("COMBO", `[jev] System One unavailable: ${result.reason}`);
-      if (result.reason === "missing_api_key") {
+      // Non-strict builds (tsconfig.mitm.json) do not narrow on `ok`; same cast as validation/typesafe.ts.
+      const failure = result as SystemOneChoiceUnavailable;
+      log.info("COMBO", `[jev] System One unavailable: ${failure.reason}`);
+      if (failure.reason === "missing_api_key") {
         return { ok: false as const, reason: "missing_api_key" as const };
       }
       return { ok: false as const, reason: "unavailable" as const };
