@@ -396,11 +396,19 @@ test("askJev: a hung upstream times out and fails open", async () => {
     return promise;
   }) as typeof fetch;
 
-  const result = await askJev(
-    "state-timeout",
-    { q: { type: "noul", instructions: "?" } },
-    { timeoutMs: 60 }
-  );
+  // AbortSignal.timeout() is unref'd: with only the hung fetch pending, the event loop
+  // would drain before the timeout fires. Hold it open for the duration of the call.
+  const keepAlive = setInterval(() => {}, 1_000);
+  let result: unknown;
+  try {
+    result = await askJev(
+      "state-timeout",
+      { q: { type: "noul", instructions: "?" } },
+      { timeoutMs: 60 }
+    );
+  } finally {
+    clearInterval(keepAlive);
+  }
   assert.equal(result, null);
   assert.equal(getJevClientStats().failures, 1);
 });

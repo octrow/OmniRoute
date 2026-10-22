@@ -32,6 +32,10 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "open-sse/handlers/chatCore/emptyTurnRetryLoop.ts": 1,
     "open-sse/handlers/chatCore/providerExecutionPipeline.ts": 2,
     "open-sse/services/imageCombo.ts": 1,
+    // jev strategy: read-only TypeSafe key presence probes (combo target admission and the
+    // combo test route) — they never dispatch with the credential (class B).
+    "open-sse/services/combo/targetResolution.ts": 1,
+    "src/app/api/combos/test/route.ts": 1,
     // GHSA-3w2r: keyless providers (local zero-config defaults, keyless
     // remotes) look up an in-scope connection for a connection-scoped API key
     // before running (chat's #9057 rule) — one extra scoped lookup per site.
@@ -156,6 +160,10 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     // persisted-cooldown gate's connection read moved here byte-identically
     // (readConnectionForCooldownGate), so this is the same site, renamed.
     "open-sse/services/combo/executeTargetGates.ts": 1,
+    // Jev decision layer: config reads the configured classifier provider's active
+    // connection, /v1/systemone lists active connections before its gated dispatch.
+    "open-sse/services/jev/config.ts": 1,
+    "src/app/api/v1/systemone/route.ts": 1,
     // #15927: providerWildcard.ts no longer queries connections itself — the Alibaba
     // free-tier drained-model filter now reads through getCachedProviderPoolConnections()
     // (open-sse/services/providerConnectionPool.ts), which goes through the shared

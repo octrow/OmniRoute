@@ -3806,7 +3806,11 @@ function ComboFormModal({
                         <div className="flex flex-col sm:flex-row sm:items-end gap-2">
                           <Select
                             className="flex-1"
-                            label={getI18nOrFallback(t, "builderComboRef", "Reference another combo")}
+                            label={getI18nOrFallback(
+                              t,
+                              "builderComboRef",
+                              "Reference another combo"
+                            )}
                             value={builderComboRefName}
                             onChange={(e) => setBuilderComboRefName(e.target.value)}
                             placeholder={getI18nOrFallback(
