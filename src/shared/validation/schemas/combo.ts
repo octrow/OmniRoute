@@ -210,6 +210,7 @@ export const comboRuntimeConfigSchema = z
     reasoningTokenBufferEnabled: z.boolean().optional(),
     // Keep (not drop) targets whose known output ceiling is below max_tokens.
     outputLimitAdvisory: z.boolean().optional(),
+    jevHeldFallback: z.boolean().optional(),
     reasoningTransportFallback: z.enum(["skip", "drop"]).optional(),
     compressionMode: compressionModeSchema.optional(),
     failoverBeforeRetry: z.boolean().optional(),

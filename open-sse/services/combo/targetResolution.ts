@@ -88,6 +88,20 @@ import {
 } from "./sessionStickiness.ts";
 import { applyRequestTagRouting } from "./autoStrategy.ts";
 import { getStrategyTraits, type StrategyTraits } from "./strategyRegistry.ts";
+import {
+  appendHeldAsFallback,
+  extractPromptForJevState,
+  orderJevComboTargets,
+  type JevAsk,
+} from "./jevOrdering.ts";
+import { partitionJevTargetsForAsk } from "./jevBlockChecker.ts";
+import { recordComboDecision } from "./decisionTrace.ts";
+import {
+  evaluateSystemOneChoice,
+  TYPESAFE_PROVIDER_ID,
+  type SystemOneChoiceUnavailable,
+} from "../typesafe/systemOne.ts";
+import { getProviderCredentials } from "../../../src/sse/services/auth";
 import type {
   ComboCollectionLike,
   ComboLike,
@@ -121,6 +135,8 @@ export interface ResolveComboTargetPipelineDeps {
    */
   buildAutoCandidates: ResolveAutoStrategyDeps["buildAutoCandidates"];
   hiddenModelsByProvider?: HiddenModelsByProvider;
+  /** #15276: decision-trace id so jev can record holds before the attempt loop. */
+  traceInvocationId?: string | null;
 }
 
 export interface ResolvedComboTargetPipeline {
@@ -449,10 +465,11 @@ function logPipelineFallthrough(pipelineErr: unknown, log: ComboLogger): void {
 }
 
 /**
- * Strategy ordering: the `auto` router for auto combos, the per-strategy chain for
- * everything else. `autoUsedExplicitRouter` is the #4945 guard — when an explicit
- * router (lkgp/cost/…) pinned orderedTargets[0], task-aware reordering below must
- * refine only the fallback order, never override the router's primary choice.
+ * Strategy ordering: the `auto` router for auto combos, the jev judge for jev
+ * combos, the per-strategy chain for everything else. `autoUsedExplicitRouter`
+ * is the #4945 guard — when an explicit router (lkgp/cost/…) pinned
+ * orderedTargets[0], task-aware reordering below must refine only the fallback
+ * order, never override the router's primary choice.
  */
 async function orderByStrategy(
   deps: ResolveComboTargetPipelineDeps,
@@ -485,6 +502,14 @@ async function orderByStrategy(
       quotaShareRelease: null,
     };
   }
+  if (strategy === "jev") {
+    const outcome = await orderByJevStrategy(deps, initialOrderedTargets);
+    return {
+      orderedTargets: outcome.targets,
+      autoUsedExplicitRouter: outcome.protectHead,
+      quotaShareRelease: null,
+    };
+  }
   const { orderedTargets, quotaShareRelease } = await applyStrategyOrdering(
     strategy,
     initialOrderedTargets,
@@ -498,6 +523,161 @@ async function orderByStrategy(
     }
   );
   return { orderedTargets, autoUsedExplicitRouter: false, quotaShareRelease };
+}
+
+/**
+ * #15276: Jev-managed combo ordering.
+ *
+ * - Drop breaker / lockout / quota / other pre-dispatch blocks before the
+ *   TypeSafe call (they are traced once and never attempted).
+ * - Live session pin → skip the TypeSafe call; leave user order (continuity
+ *   filters promote the pin afterwards).
+ * - Otherwise one System One choice call; admit winner + options ≥ 0.15 in
+ *   user order (cap 4). Fall open to user order on missing key / timeout /
+ *   low confidence / bad winner id.
+ */
+async function orderByJevStrategy(
+  deps: ResolveComboTargetPipelineDeps,
+  initialOrderedTargets: ResolvedComboTarget[]
+) {
+  const { body, combo, log, signal } = deps;
+
+  const partition = await partitionJevTargetsForAsk(initialOrderedTargets, {
+    body,
+    config: deps.config as Record<string, unknown> | null | undefined,
+    resilienceSettings: deps.resilienceSettings,
+    log,
+    isModelAvailable: deps.isModelAvailable,
+    comboName: combo.name,
+  });
+
+  if (deps.traceInvocationId) {
+    for (const blocked of partition.blocked) {
+      recordComboDecision(deps.traceInvocationId, {
+        step: blocked.target.executionKey,
+        target: blocked.target.modelStr,
+        decision: "skipped_before_dispatch",
+        reason: blocked.reason,
+        detail: `verdict=blocked reason=${blocked.reason}`,
+      });
+    }
+  }
+
+  const eligible = partition.eligible;
+  const sessionPinned = await jevSessionPinned(deps, eligible);
+  const ask: JevAsk = async ({ state, criteria }) => {
+    try {
+      const credentials = await getProviderCredentials(
+        TYPESAFE_PROVIDER_ID,
+        null,
+        deps.apiKeyAllowedConnections ?? null
+      );
+      const apiKey =
+        credentials && typeof (credentials as { apiKey?: unknown }).apiKey === "string"
+          ? (credentials as { apiKey: string }).apiKey
+          : null;
+      const result = await evaluateSystemOneChoice({
+        apiKey,
+        state,
+        criteria,
+        signal,
+      });
+      if (result.ok) {
+        return {
+          ok: true as const,
+          answer: {
+            choice: result.choice,
+            probabilities: result.probabilities,
+            confidence: result.confidence,
+          },
+        };
+      }
+      // Non-strict builds (tsconfig.mitm.json) do not narrow on `ok`; same cast as validation/typesafe.ts.
+      const failure = result as SystemOneChoiceUnavailable;
+      log.info("COMBO", `[jev] System One unavailable: ${failure.reason}`);
+      if (failure.reason === "missing_api_key") {
+        return { ok: false as const, reason: "missing_api_key" as const };
+      }
+      return { ok: false as const, reason: "unavailable" as const };
+    } catch {
+      log.warn("COMBO", "[jev] System One call failed (non-fatal); falling open to user order");
+      return { ok: false as const, reason: "unavailable" as const };
+    }
+  };
+
+  // `jevHeldFallback`: Jev only reorders - held steps become a tail (below) and a
+  // low-confidence answer ranks by probability instead of falling open to user order.
+  const reorderOnly =
+    (combo.config as { jevHeldFallback?: unknown } | null)?.jevHeldFallback === true;
+  const outcome = await orderJevComboTargets(eligible, extractPromptForJevState(body), {
+    sessionPinned,
+    ask,
+    rankLowConfidence: reorderOnly,
+  });
+
+  if (deps.traceInvocationId) {
+    for (const hold of outcome.holds) {
+      recordComboDecision(deps.traceInvocationId, {
+        step: hold.executionKey,
+        target: hold.modelStr,
+        decision: "skipped_before_dispatch",
+        reason: hold.reason,
+        detail: hold.detail,
+      });
+    }
+    for (const admitted of outcome.admitted) {
+      recordComboDecision(deps.traceInvocationId, {
+        step: admitted.executionKey,
+        target: admitted.modelStr,
+        decision: "not_reached",
+        detail: admitted.detail,
+      });
+    }
+    if (outcome.fellOpen && outcome.fallbackReason) {
+      log.info(
+        "COMBO",
+        outcome.missingApiKey
+          ? `[jev] Falling open to user order (Jev is not configured)`
+          : `[jev] Falling open to user order (${outcome.fallbackReason})`
+      );
+    }
+  }
+
+  if (sessionPinned) {
+    log.info("COMBO", `[jev] Skipping System One — live session pin for combo "${combo.name}"`);
+  } else {
+    log.info(
+      "COMBO",
+      `[jev] Admitted ${outcome.targets.length}/${eligible.length} eligible (${partition.blocked.length} blocked): ${outcome.targets
+        .map((target) => target.modelStr)
+        .join(" → ")}`
+    );
+  }
+  if (reorderOnly && outcome.holds.length > 0) {
+    // Held steps still get a "skipped_before_dispatch" trace row above; with this flag
+    // they are only demoted, so a failed Jev pick falls through instead of exhausting the combo.
+    return { ...outcome, targets: appendHeldAsFallback(outcome, eligible) };
+  }
+  return outcome;
+}
+
+/** True when continuity will pin this combo. Uses the same stickiness pass the pipeline runs again. */
+async function jevSessionPinned(
+  deps: ResolveComboTargetPipelineDeps,
+  targets: ResolvedComboTarget[]
+): Promise<boolean> {
+  const disableSessionStickiness =
+    resolveDisableSessionStickiness(
+      deps.config as Record<string, unknown> | null | undefined,
+      deps.settings as Record<string, unknown> | null | undefined
+    ) === true;
+  if (disableSessionStickiness || targets.length <= 1) return false;
+  const stickyPreview = await applySessionStickiness(
+    targets,
+    normalizeStickinessMessages(deps.body as { messages?: unknown; input?: unknown }),
+    deps.combo.name
+  );
+  return stickyPreview.stuck;
 }
 
 /**
@@ -747,7 +927,7 @@ async function applyPromptCacheStage(
   // strategies. Per #8370, lkgp/auto/cache-optimized explicitly support promoting
   // a previously-successful model ahead of the declared order, so they must stay
   // cross-model ("global") rather than be locked into a single model step.
-  // The model-order-preserving set (priority / weighted / fill-first / quota-share) is
+  // The model-order-preserving set (priority / weighted / fill-first / quota-share / jev) is
   // the `promptCacheAffinityScope: "model"` trait in the strategy registry.
   const promptCacheAffinity = applyPromptCacheAffinity(
     promptCacheAffinityTargets,

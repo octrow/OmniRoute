@@ -12,6 +12,11 @@ import { getRuntimePorts } from "@/lib/runtime/ports";
 import { requiresWebSessionCredential } from "@/shared/providers/webSessionCredentials";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo.ts";
 import type { ComboLike, ResolvedComboTarget } from "@omniroute/open-sse/services/combo/types.ts";
+import { buildJevComboTestSummary } from "@omniroute/open-sse/services/combo/jevTestSummary.ts";
+import { TYPESAFE_PROVIDER_ID } from "@omniroute/open-sse/services/typesafe/systemOne.ts";
+import { getProviderCredentials } from "@/sse/services/auth";
+import { getCachedSettings } from "@/lib/db/readCache";
+import { resolveResilienceSettings } from "@/lib/resilience/settings";
 import { testComboSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
@@ -299,9 +304,33 @@ export async function POST(request) {
       request.signal ?? null
     );
 
-    return NextResponse.json(
-      buildComboTestResponse(comboName, combo, results, totalAutoCandidates)
-    );
+    let jev: Awaited<ReturnType<typeof buildJevComboTestSummary>> | null = null;
+    if (String(combo.strategy || "").trim().toLowerCase() === "jev") {
+      const settings = await getCachedSettings();
+      const resilienceSettings = resolveResilienceSettings(settings);
+      let hasTypesafeKey = false;
+      try {
+        const credentials = await getProviderCredentials(TYPESAFE_PROVIDER_ID);
+        hasTypesafeKey =
+          !!credentials &&
+          typeof (credentials as { apiKey?: unknown }).apiKey === "string" &&
+          (credentials as { apiKey: string }).apiKey.trim().length > 0;
+      } catch {
+        hasTypesafeKey = false;
+      }
+      jev = await buildJevComboTestSummary({
+        targets,
+        comboName: combo.name,
+        config: (combo.config as Record<string, unknown> | null | undefined) ?? null,
+        resilienceSettings,
+        hasTypesafeKey,
+      });
+    }
+
+    return NextResponse.json({
+      ...buildComboTestResponse(comboName, combo, results, totalAutoCandidates),
+      ...(jev ? { jev } : {}),
+    });
   } catch (error) {
     console.log("Error testing combo:", error);
     return NextResponse.json({ error: "Failed to test combo" }, { status: 500 });
