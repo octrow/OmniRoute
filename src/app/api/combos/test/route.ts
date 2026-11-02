@@ -25,10 +25,9 @@ import { isAutoComboId, materializeAutoCombo } from "@/lib/combos/autoVirtual";
 import type { ComboRecord } from "@/domain/persistence/comboRepositories";
 
 export const COMBO_TEST_TIMEOUT_MS = 60_000;
-export const COMBO_TEST_TOTAL_TIMEOUT_MS = 180_000;
 /**
  * Virtual auto combos can hold every connected model in the pool — probing all
- * of them would run far past the total budget. Cap the smoke test at the
+ * of them would create excessive upstream health probes. Cap the smoke test at the
  * highest-weighted candidates; `totalCandidates` in the response reports the
  * unbounded pool size so the UI can explain the truncation.
  */
@@ -305,7 +304,11 @@ export async function POST(request) {
     );
 
     let jev: Awaited<ReturnType<typeof buildJevComboTestSummary>> | null = null;
-    if (String(combo.strategy || "").trim().toLowerCase() === "jev") {
+    if (
+      String(combo.strategy || "")
+        .trim()
+        .toLowerCase() === "jev"
+    ) {
       const settings = await getCachedSettings();
       const resilienceSettings = resolveResilienceSettings(settings);
       let hasTypesafeKey = false;
@@ -344,22 +347,11 @@ async function probeComboTargets(
   signal: AbortSignal | null
 ): Promise<ComboTestResult[]> {
   const results: ComboTestResult[] = [];
-  const loopStarted = Date.now();
   for (const target of targets) {
     // Client disconnects surface through signal (from request.signal at the
     // call site). Stop instead of starting another doomed probe.
     if (signal?.aborted) {
       break;
-    }
-    if (Date.now() - loopStarted >= COMBO_TEST_TOTAL_TIMEOUT_MS) {
-      results.push(
-        buildComboTestResult(target, {
-          status: "error",
-          error: `Timeout (${COMBO_TEST_TOTAL_TIMEOUT_MS / 1000}s total)`,
-          latencyMs: 0,
-        })
-      );
-      continue;
     }
     results.push(await testComboTarget(target, baseInternalUrl, internalApiKey, signal));
   }

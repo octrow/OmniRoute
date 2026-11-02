@@ -293,28 +293,28 @@ resolved values feed the engine's existing `config.modePack` / `config.budgetCap
 
 OmniRoute's combo engine supports **21 routing strategies** (declared in `src/shared/constants/routingStrategies.ts` → `ROUTING_STRATEGY_VALUES`). The Auto Combo engine itself is exposed under the `auto` strategy; the others are available for persisted combos.
 
-| Strategy            | Description                                                                                                                                                                               |
-| :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `priority`          | First-target ordered list with explicit priority                                                                                                                                          |
-| `weighted`          | Weighted random by per-target weight                                                                                                                                                      |
-| `round-robin`       | Cycle through targets in order (batched; see below)                                                                                                                                       |
-| `context-relay`     | Hand off context across targets (long conversations)                                                                                                                                      |
-| `fill-first`        | Fill each target's quota before moving to next                                                                                                                                            |
-| `p2c`               | Power-of-2-choices random load balancing                                                                                                                                                  |
-| `random`            | Uniform random selection                                                                                                                                                                  |
-| `least-used`        | Pick target with lowest current load                                                                                                                                                      |
-| `cost-optimized`    | Minimize $ per request given catalog pricing                                                                                                                                              |
-| `reset-aware` ⭐    | Prioritize by quota reset time — short reset windows ranked higher                                                                                                                        |
-| `reset-window`      | Prefer targets whose quota window resets soonest                                                                                                                                          |
-| `headroom`          | Pick the target with the most remaining quota headroom                                                                                                                                    |
-| `quota-weighted`    | Skip exhausted accounts, then pick among the rest in proportion to leftover quota divided by in-flight load; existing conversations stay pinned                                           |
-| `strict-random`     | Random without deduplication of repeats                                                                                                                                                   |
-| `auto`              | Use Auto Combo scoring (16-factor) — **recommended**                                                                                                                                      |
-| `lkgp`              | Last-Known-Good Path (pins to the last successful provider, then falls back to rules)                                                                                                     |
-| `context-optimized` | Pick target with best fit for current context size                                                                                                                                        |
-| `cache-optimized`   | Reorder targets by prompt-cache affinity — the connection likeliest to already hold this request's cached prefix is tried first (`open-sse/services/combo/promptCacheAffinity.ts`, #8008) |
-| `fusion` 🧬         | Fan out to a panel of models in parallel, then synthesize one answer via a judge (see below)                                                                                              |
-| `pipeline`          | Run targets sequentially, threading each step's output into the next step's input; only the final answer is returned (#6396)                                                              |
+| Strategy            | Description                                                                                                                                                                                          |
+| :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `priority`          | First-target ordered list with explicit priority                                                                                                                                                     |
+| `weighted`          | Weighted random by per-target weight                                                                                                                                                                 |
+| `round-robin`       | Cycle through targets in order (batched; see below)                                                                                                                                                  |
+| `context-relay`     | Hand off context across targets (long conversations)                                                                                                                                                 |
+| `fill-first`        | Fill each target's quota before moving to next                                                                                                                                                       |
+| `p2c`               | Power-of-2-choices random load balancing                                                                                                                                                             |
+| `random`            | Uniform random selection                                                                                                                                                                             |
+| `least-used`        | Pick target with lowest current load                                                                                                                                                                 |
+| `cost-optimized`    | Minimize $ per request given catalog pricing                                                                                                                                                         |
+| `reset-aware` ⭐    | Prioritize by quota reset time — short reset windows ranked higher                                                                                                                                   |
+| `reset-window`      | Prefer targets whose quota window resets soonest                                                                                                                                                     |
+| `headroom`          | Pick the target with the most remaining quota headroom                                                                                                                                               |
+| `quota-weighted`    | Skip exhausted accounts, then pick among the rest in proportion to leftover quota divided by in-flight load; existing conversations stay pinned                                                      |
+| `strict-random`     | Random without deduplication of repeats                                                                                                                                                              |
+| `auto`              | Use Auto Combo scoring (16-factor) — **recommended**                                                                                                                                                 |
+| `lkgp`              | Last-Known-Good Path (pins to the last successful provider, then falls back to rules)                                                                                                                |
+| `context-optimized` | Pick target with best fit for current context size                                                                                                                                                   |
+| `cache-optimized`   | Reorder targets by prompt-cache affinity — the connection likeliest to already hold this request's cached prefix is tried first (`open-sse/services/combo/promptCacheAffinity.ts`, #8008)            |
+| `fusion` 🧬         | Fan out to a panel of models in parallel, then synthesize one answer via a judge (see below)                                                                                                         |
+| `pipeline`          | Run targets sequentially, threading each step's output into the next step's input; only the final answer is returned (#6396)                                                                         |
 | `jev`               | User-ranked preference list; TypeSafe Jev admits which entries run for this request. Winner first, other admitted targets keep user order. Falls open to user order when Jev is unavailable (#15276) |
 
 ⭐ = New in v3.8.0 · 🧬 = New in v3.8.36
@@ -731,7 +731,10 @@ health and cost keep deciding which account.
 
 `OMNIROUTE_NADIR_API_KEY` and `OMNIROUTE_NADIR_BASE_URL` are env fallbacks for the two
 strings. `baseUrl` is only needed for a self-hosted Nadir (a trailing `/v1` is tolerated).
-Keyless calls land on Nadir's anonymous tier, which is rate-limited per IP.
+Keyless calls land on Nadir's anonymous tier, which is rate-limited per IP. With a key
+([create one](https://app.getnadir.com/dashboard/api-keys)), each decision is
+logged to your Nadir dashboard. Full setup and verification:
+[getnadir.com/docs/gateway-omniroute](https://getnadir.com/docs/gateway-omniroute/).
 
 What leaves the box: the last user message's text (first 16k characters), the candidate
 model ids and a `source: "omniroute"` channel tag. No system prompt, history, tools or
